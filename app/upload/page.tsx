@@ -1,61 +1,79 @@
 "use client"
 
+import { useState } from "react"
 import * as XLSX from "xlsx"
-import { supabase } from "../../lib/supabase"
+import { supabase } from "@/lib/supabase"
 
 export default function UploadPage() {
+  const [loading, setLoading] = useState(false)
 
-  const handleFile = async (e: any) => {
+  const handleUpload = async (e: any) => {
     const file = e.target.files[0]
     if (!file) return
+      // kasih confirm dulu
+if (!confirm("Yakin mau replace semua data?")) return
+
+    setLoading(true)
 
     const data = await file.arrayBuffer()
     const workbook = XLSX.read(data)
     const sheet = workbook.Sheets[workbook.SheetNames[0]]
+
     const json: any[] = XLSX.utils.sheet_to_json(sheet)
 
-    // 🔥 HAPUS DATA LAMA
-    await supabase.from("edc_rmft").delete().not("id", "is", null)
+    console.log("RAW EXCEL:", json[0])
 
-    // 🔥 FORMAT DATA
-   console.log("RAW:", json)
+    // 🔥 CLEAR DATA LAMA
+    await supabase.from("edc_rmft").delete().neq("id", "")
 
-// 🔥 FORMAT DATA
-const formatted = json.map(row => {
-  const newRow: any = {}
+    // 🔥 FORMAT DATA SESUAI HEADER EXCEL
+    const formatted = json.map((row: any) => ({
+  nama_rm: String(row["Nama RM"] ?? "").trim(),
+  pn_rm: String(row["PN"] ?? "").replace(/\D/g, ""),
+  branch_office: String(row["Cabang"] ?? "").trim(),
+  nama_merchant: String(row["Nama Merchant"] ?? "").trim(),
 
-  Object.keys(row).forEach(key => {
-    const cleanKey = key.trim().toLowerCase()
+  // optional (kalau masih disimpan)
+  mid_edc: String(row["MID"] ?? "").trim(),
 
-    if (cleanKey === "nama rm") newRow.nama_rm = row[key]
-    if (cleanKey === "pn") newRow.pn_rm = String(row[key] ?? "")
-    if (cleanKey === "cabang") newRow.branch_office = row[key]
-    if (cleanKey === "kcp") newRow.kcp = String(row[key] ?? "")
-    if (cleanKey === "nama merchant") newRow.nama_merchant = row[key]
-    if (cleanKey === "mid") newRow.mid_edc = String(row[key] ?? "")
-    if (cleanKey === "tid") newRow.tid_edc = String(row[key] ?? "")
-    if (cleanKey === "status") newRow.status_edc = row[key]
-  })
+  // 🔥 utama sekarang
+  tid_edc: String(row["TID"] ?? "").trim(),
 
-  return newRow
-})
+  // 🔥 penting (biar kebaca dashboard)
+  status_edc: String(row["Status"] ?? "")
+    .toLowerCase()
+    .trim(),
 
-console.log("FORMATTED:", formatted)
+  // 🔥 BARU
+  alamat: String(row["Alamat"] ?? "").trim(),
+
+  // 🔥 BARU (handle angka besar + koma)
+  sales_volume: Number(
+    String(row["Sales Volume"] ?? "0").replace(/,/g, "")
+  )
+}))
+
+    console.log("FORMATTED:", formatted[0])
 
     const { error } = await supabase.from("edc_rmft").insert(formatted)
 
     if (error) {
       console.log(error)
-      alert("Upload gagal ❌")
+      alert("Upload gagal")
     } else {
-      alert("Upload sukses 🚀")
+      alert("Upload berhasil 🔥")
     }
+
+    setLoading(false)
   }
 
   return (
-    <main className="p-4">
-      <h1 className="text-xl font-bold">Upload Data EDC</h1>
-      <input type="file" onChange={handleFile} className="mt-4" />
+    <main className="p-6">
+      <h1 className="text-xl font-bold mb-4">Upload Excel</h1>
+
+      <input type="file" onChange={handleUpload} />
+
+      {loading && <p className="mt-2">Uploading...</p>}
     </main>
   )
 }
